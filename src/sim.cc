@@ -80,7 +80,7 @@ void simulate() {
       nodes[i].in = nodes[i].out = 0;
 
       // Step 1: admit incoming messages until nothing left or we hit the BW limit.
-      while (!nodes[i].q.is_empty() && nodes[i].in + FLAGS_msg_size <= nodes[i].in_limit) {
+      while (!nodes[i].q.empty() && nodes[i].in + FLAGS_msg_size <= nodes[i].in_limit) {
         nodes[i].buf.push_back(nodes[i].q.front());
         nodes[i].q.pop();
         nodes[i].in += FLAGS_msg_size;
@@ -98,7 +98,7 @@ void simulate() {
       // TODO(haoyan).
 
       // Step 4: emit outgoing messages to other nodes until everything is done or we hit the BW limit.
-      while (!nodes[i].buf.is_empty() && nodes[i].out + FLAGS_msg_size <= nodes[i].out_limit) {
+      while (!nodes[i].buf.empty() && nodes[i].out + FLAGS_msg_size <= nodes[i].out_limit) {
         if (nodes[i].p != -1) {
           nodes[nodes[i].p].q.push(nodes[i].buf.front());
         }
@@ -109,8 +109,8 @@ void simulate() {
   }
 }
 
-int main() {
-  google::ParseCommandLineFlags(&argc, &argv, true);
+int main(int argc, char **argv) {
+  gflags::ParseCommandLineFlags(&argc, &argv, true);
 
   FLAGS_logtostderr = 1;
   google::InitGoogleLogging(argv[0]);
