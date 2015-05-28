@@ -1,5 +1,5 @@
 CXX		= g++
-CXXFLAGS	= -g -std=c++0x -O2 -lglog -lgflags
+CXXFLAGS	= -std=c++0x -O2 -lglog -lgflags
 
 all: sim
 
