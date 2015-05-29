@@ -104,9 +104,15 @@ void init() {
   }
 
   // Set up which nodes should perform Garbage Collections.
+/*
   // Policy 1: all rack hubs.
   for (int i = 0; i < total_nodes; i += FLAGS_nodes_per_rack) {
     nodes[i].gc = true;
+  }
+*/
+  // Policy 2: top 2 levels of rack hubs.
+  for (int i = 0; i <= FLAGS_fanout; ++i) {
+    nodes[i * FLAGS_nodes_per_rack].gc = true;
   }
 }
 
