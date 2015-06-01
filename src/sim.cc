@@ -2,7 +2,7 @@
 
 #include <iostream>
 #include <fstream>
-#include <set>
+#include <map>
 #include <sstream>
 #include <thread>
 #include <vector>
@@ -26,13 +26,13 @@ DEFINE_int32(gc_period, 10, "GC interval.");
 DEFINE_int32(gc_levels, 10, "Only perform GC on top k levels of the tree.");
 DEFINE_int32(gc_acc_delay, 100, "Accumulated GC delay from leaf to root.");
 
-DEFINE_int64(in_limit, 1024 * 1024 * 1024 / 8,
+DEFINE_int64(in_limit, 125000000,
     "Inbound BW limit per second at a node.");
-DEFINE_int64(out_limit, 1024 * 1024 * 1024 / 8,
+DEFINE_int64(out_limit, 125000000,
     "Outbound BW limit per second at a node.");
-DEFINE_int64(in_limit_root, 1024 * 1024 * 1024 / 8,
+DEFINE_int64(in_limit_root, 125000000,
     "Inbound BW limit per second at a node.");
-DEFINE_int64(out_limit_root, 1024 * 1024 * 1024 / 8,
+DEFINE_int64(out_limit_root, 125000000,
     "Outbound BW limit per second at a node.");
 
 // System Parameters.
@@ -220,27 +220,30 @@ void write_log(int t) {
   int64_t total_self = 0;
   int64_t total_saved = 0;
   for (int i = 0; i < total_nodes; ++i) {
-    total_self += nodes[i].total_self_msgs;
-    total_saved += nodes[i].msgs_saved;
+    total_self += nodes[i].self_per_sec;
+    total_saved += nodes[i].saved_per_sec;
   }
 
-  LOG(INFO) << "Total messages generated: " << total_self;
-  LOG(INFO) << "Total messages saved: " << total_saved;
+  LOG(INFO) << "Total data generated: " << total_self;
+  LOG(INFO) << "Total space saved: " << total_saved;
 
   for (int i = 0; i < total_nodes; ++i) {
     if (i % FLAGS_nodes_per_rack == 0) {
       LOG(INFO) << "Node " << i
         // Total input in MB: subtree + self-generated
-        << ' ' << double(nodes[i].in_per_sec + nodes[i].total_self_msgs) / 1024 / 1024
+        << ' ' << double(nodes[i].in_per_sec + nodes[i].self_per_sec) / 1024 / 1024
         // Total output in MB
         << ' ' << double(nodes[i].out_per_sec) / 1024 / 1024
+        // Total effective output in MB
+        << ' ' << double(nodes[i].eff_out_per_sec) / 1024 / 1024
         // %inbound BW usage
         << ' ' << double(nodes[i].in_per_sec) / (nodes[i].in_limit * FLAGS_ticks) * 100
         // %outbound BW usage
         << ' ' << double(nodes[i].out_per_sec) / (nodes[i].out_limit * FLAGS_ticks) * 100;
     }
-    nodes[i].in_per_sec = nodes[i].out_per_sec = 0;
-    nodes[i].total_self_msgs = nodes[i].msgs_saved = 0;
+    nodes[i].in_per_sec = nodes[i].out_per_sec = nodes[i].eff_out_per_sec = 0;
+    nodes[i].self_per_sec = 0;
+    nodes[i].saved_per_sec = 0;
   }
 }
 
@@ -272,6 +275,7 @@ void process_messages_by_node(int lo, int hi, int t) {
       Message msg;
       msg.type = 0;
       msg.key = get_next_key();
+      msg.eff_size = 1;
       if (nodes[i].gc) {
         msg.time = t + nodes[i].gc_delay;
       } else {
@@ -280,13 +284,13 @@ void process_messages_by_node(int lo, int hi, int t) {
 
       nodes[i].buf.push_back(msg);
     }
-    nodes[i].total_self_msgs += nodes[i].msgs_per_tick;
+    nodes[i].self_per_sec += nodes[i].msgs_per_tick * FLAGS_msg_size;
 
 //    LOG(INFO) << "Step 2 done.";
 
     // Step 3: process buffered messages if necessary (e.g. GC).
     if (nodes[i].gc && t % FLAGS_gc_period == 0 && !nodes[i].buf.empty()) {
-      int pos = int(nodes[i].buf.size()) - 1;
+      int pos = int(nodes[i].buf.size());
 /*
       LOG(INFO) << "Keys:";
       for (int j = 0; j < pos + 1; ++j) {
@@ -297,27 +301,42 @@ void process_messages_by_node(int lo, int hi, int t) {
         }
       }
 */
-      std::set<int> table;
-      while (pos >= 0) {
-        if (nodes[i].buf[pos].type == 0) {
-          if (table.count(nodes[i].buf[pos].key) == 1) {
-            nodes[i].buf[pos].type = 1;
+
+
+      // If nodes get acks by receiving other messages (e.g. invalidations) or
+      // retry after timeout, no specific "ordering" is required here, so we
+      // don't need to maintain tombstones.
+      std::map<int, int> table;
+      int saved = 0;
+
+      for (int j = 0; j < pos; ++j) {
+        if (nodes[i].buf[j].type == 0) {
+          if (table.count(nodes[i].buf[j].key) == 1) {
+            nodes[i].buf[j].type = 1;
+            int idx = table[nodes[i].buf[j].key];
+            nodes[i].buf[idx].eff_size += nodes[i].buf[j].eff_size;
+//            LOG(INFO) << "key " << nodes[i].buf[j].key << "; idx " << idx;
+//            LOG(INFO) << "eff_size " << nodes[i].buf[idx].eff_size;
+            ++saved;
           } else {
-            table.insert(nodes[i].buf[pos].key);
+            table[nodes[i].buf[j].key] = j;
           }
         }
-        --pos;
       }
-
+      nodes[i].saved_per_sec += saved * FLAGS_msg_size;
+/*
       pos = int(nodes[i].buf.size());
       int flag = 0;
+      int idx = -1;
       int saved = 0;
       for (int j = 0; j < pos; ++j) {
         if (nodes[i].buf[j].type == 1) {
           if (flag == 0) {
             flag = 1;
+            idx = j;
           } else {
             nodes[i].buf[j].type = 2;
+            nodes[i].buf[idx].eff_size += nodes[i].buf[j].eff_size;
             ++saved;//nodes[i].msgs_saved;
           }
         } else if (nodes[i].buf[j].type == 0) {
@@ -325,9 +344,11 @@ void process_messages_by_node(int lo, int hi, int t) {
         }
       }
       nodes[i].msgs_saved += saved;
+*/
       if (t % (FLAGS_ticks / 2) == 0) {
         mutex.lock();
-        LOG(INFO) << "GC at node " << i << ": " << saved << "/" << pos << ".";
+        LOG(INFO) << "GC at node " << i << ": "
+            << saved << "/" << pos << ".";
         mutex.unlock();
       }
     }
@@ -372,18 +393,21 @@ void simulate() {
       while (!nodes[i].buf.empty()
           && nodes[i].buf.front().time <= t
           && nodes[i].out + FLAGS_msg_size <= nodes[i].out_limit) {
-        if (nodes[i].buf.front().type != 2) {
+        if (nodes[i].buf.front().type == 0) {
           if (nodes[i].p != -1) {
             nodes[nodes[i].p].q.push(nodes[i].buf.front());
           }
           nodes[i].out += FLAGS_msg_size;
           ++nodes[i].total_out_msgs;
+
+          CHECK(nodes[i].buf.front().eff_size > 0);
+          nodes[i].eff_out_per_sec += nodes[i].buf.front().eff_size * FLAGS_msg_size;
         }
         nodes[i].buf.pop_front();
       }
       nodes[i].out_per_sec += nodes[i].out;
 
-      //      LOG(INFO) << "Step 4 done.";
+//      LOG(INFO) << "Step 4 done.";
     }
 
     // Gather log information.
