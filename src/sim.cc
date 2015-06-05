@@ -117,6 +117,7 @@ void init() {
 
   // Set up which nodes should perform Garbage Collections.
   int levels = get_tree_levels(FLAGS_fanout, total_nodes);
+  int diff = 0;
   double base_delay;
 
   switch (FLAGS_gc_policy) {
@@ -176,6 +177,18 @@ void init() {
         nodes[i].gc_delay = base_delay * (nodes[i].level + 1);
       }
       break;
+    case 7: // Only bottom k levels; linearly increase delays downwards.
+      if (levels > FLAGS_gc_levels) {
+        diff = levels - FLAGS_gc_levels;
+        levels = FLAGS_gc_levels;
+      }
+      base_delay = FLAGS_gc_acc_delay / double((levels + 1) * levels / 2);
+      for (int i = 0; i <= total_nodes; i += FLAGS_nodes_per_rack) {
+        if (nodes[i].level < diff) continue;
+        nodes[i].gc = true;
+        nodes[i].gc_delay = base_delay * (nodes[i].level - diff + 1);
+      }
+      break;
     default:
       break;
   }
@@ -190,6 +203,7 @@ int64_t get_next_key() {
     std::stringstream filename;
     filename << "data-" << keys.fid;
 
+    LOG(INFO) << "Reading data file " << filename.str() << "...";
     std::fstream keyfile(filename.str());
 
     keys.data.clear();
