@@ -13,6 +13,12 @@ struct Message {
   // Time when this message should be forwarded.
   // Only used at node buffer.
   int64_t time;
+  // ID of the tree this message goes through.
+  int tree;
+
+  bool operator < (const Message &right) const {
+    return time < right.time;
+  }
 };
 
 #endif // MESSAGE_H_
