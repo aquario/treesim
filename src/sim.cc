@@ -38,7 +38,7 @@ DEFINE_int64(out_limit_root, 125000000,
     "Outbound BW limit per second at a node.");
 
 // System Parameters.
-DEFINE_int64(duration, 60, "Duration of a simulation in seconds.");
+DEFINE_int64(duration, 30, "Duration of a simulation in seconds.");
 DEFINE_int32(ticks, 1000, "#ticks in a second during simulation.");
 DEFINE_int32(nthreads, 1, "Number of worker threads.");
 
@@ -134,6 +134,12 @@ void init() {
   // First, get the number of internal nodes in each tree.
   int ninternals = get_internal_node_count(FLAGS_fanout, FLAGS_nracks);
   LOG(INFO) << "#internal nodes = " << ninternals;
+
+  // Log the number of trees and the root node IDs of each tree.
+  LOG(INFO) << "#trees " << ntrees;
+  for (int i = 0; i < ntrees; ++i) {
+    LOG(INFO) << "Root " << i * ninternals * FLAGS_nodes_per_rack;
+  }
 
   for (int i = 0; i < ntrees; ++i) {
     // For each tree ...
