@@ -1,0 +1,36 @@
+\section{Related Work}\label{sec:related}
+
+The data aggregation problem addressed in this paper shares many
+characteristics with multicast systems.  In fact, many existing
+application-level multicast systems either build overlay trees, or rely on such
+structures implicitly to disseminate data.  Examples include
+Overcast~\cite{JGJK00}, Chainsaw~\cite{PKTSM05}, SelectCast~\cite{BvRD03}, and
+Bayeux~\cite{ZZJKK01}.  The main difference is that with multiple publisher
+and a single receiver, the data aggregation system has the ability to perform
+data compaction to improve bandwidth efficiency within the tree structures.
+Our system also provide adaptive bandwidth allocation to accomodate many data
+sources behaving differently.
+
+SplitStream~\cite{CDKNRS03} is a multicast system that uses multiple
+independent trees to achieve efficiency and fault tolerance.  SplitStream built
+multicast trees based on Pastry, an underlying peer-to-peer overlay
+network~\cite{RD01}, while our design builds aggregation trees based on
+knowledge of the underlying physical network topology.
+
+Astrolabe~\cite{vRBV03} is a scalable distributed service that supports data
+aggregation.  It works by organizing resources into a hierarchy of domains.
+Astrolabe provides the ability of querying aggregated data using a high-level
+language.  However, it is not intended for an environment in which a large
+number of nodes proactively push updates to one destination at high rate.
+
+The data compaction technique is related to the garbage collection mechanism
+introduced in Sprinkler~\cite{GvR13}.  Garbage collection in Sprinkler operates
+on a sequence of events with total order.  We generalize the concept and make
+use of it on an unordered set of messages.  Also, Sprinkler scales with a large
+number of subscribers in geo-distributed datacenters, but it doesn't scale with
+the number of publishers.
+
+QJUMP~\cite{QJUMP15} is a system that offers priority levels with different
+tradeoffs between latency variance and throughput.  Our system aims at reducing
+loac imbalance, and trades off latency for saving on bandwidth.
+
